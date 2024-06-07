@@ -11,6 +11,7 @@ public struct FileRotationLogger: FileLoggerable {
     public let filePermission: String
 
     public let compressArchived: Bool
+    private let hostname: String
 
     let rotationConfig: RotationConfig
     private weak var delegate: FileRotationLoggerDelegate?
@@ -24,7 +25,8 @@ public struct FileRotationLogger: FileLoggerable {
                 filePermission: String = "640",
                 rotationConfig: RotationConfig,
                 delegate: FileRotationLoggerDelegate? = nil,
-                compressArchived: Bool = false) throws {
+                compressArchived: Bool = false,
+                hostname: String) throws {
         self.label = label
         self.queue = DispatchQueue(label: label)
         self.logLevel = logLevel
@@ -40,6 +42,7 @@ public struct FileRotationLogger: FileLoggerable {
         self.filePermission = filePermission
 
         self.compressArchived = compressArchived
+        self.hostname = hostname
 
         self.rotationConfig = rotationConfig
         self.delegate = delegate
@@ -103,7 +106,8 @@ public struct FileRotationLogger: FileLoggerable {
             if self.compressArchived {
                 Task.detached { [archivedFileURL] in
                     do {
-                        let archivePath = Compressor.uniqueName(file: archivedFileURL.deletingPathExtension().toPath())
+                        let archivePath = Compressor.uniqueName(file: archivedFileURL.deletingPathExtension().toPath(),
+                                                                hostname: self.hostname)
                         try Compressor.lzfse(src: archivedFileURL.toPath(), dst: archivePath)
                         try FileManager.default.removeItem(atPath: archivedFileURL.toPath())
 

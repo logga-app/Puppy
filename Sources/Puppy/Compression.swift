@@ -24,26 +24,20 @@ class Compressor {
         }
     }
 
-    static func uniqueName(file: String) -> String {
-        return "\(file).\(ProcessInfo().hostName).\(Int(Date().timeIntervalSince1970)).archive"
+    static func uniqueName(file: String, hostname: String) -> String {
+        return "\(file)_\(hostname)_\(Int(Date().timeIntervalSince1970)).archive"
     }
 
     static func lzfse(src: String, dst: String) throws {
         if #available(macOS 11.0, *) {
-            let sourcePath = FilePath(src)
             let destinationPath = FilePath(dst)
+            let sourceURL = URL(fileURLWithPath: src)
 
-            guard let readFileStream = ArchiveByteStream.fileStream(
-                    path: sourcePath,
-                    mode: .readOnly,
-                    options: [ ],
-                    permissions: FilePermissions(rawValue: 0o644)) else {
-                throw CompressionError.createFileStream(stream: "read")
-            }
-            defer {
-                try? readFileStream.close()
-            }
-            
+            let header = ArchiveHeader()
+            header.append(.string(key: ArchiveHeader.FieldKey("PAT"), value: src))
+            header.append(.uint(key: ArchiveHeader.FieldKey("TYP"),
+                    value: UInt64(ArchiveHeader.EntryType.regularFile.rawValue)))
+
             guard let writeFileStream = ArchiveByteStream.fileStream(
                     path: destinationPath,
                     mode: .writeOnly,
@@ -56,19 +50,27 @@ class Compressor {
             }
 
             guard let compressStream = ArchiveByteStream.compressionStream(
-                    using: .lzfse,
-                    writingTo: writeFileStream) else {
+                using: .lzfse,
+                writingTo: writeFileStream,
+                blockSize: 1 * 1024 * 1024,
+                flags: []) else {
                 throw CompressionError.createFileStream(stream: "compress")
             }
             defer {
                 try? compressStream.close()
             }
 
-            do {
-                _ = try ArchiveByteStream.process(readingFrom: readFileStream,
-                                                  writingTo: compressStream)
-            } catch {
-                throw CompressionError.archive(filename: src, err: error.localizedDescription)
+            guard let encodeStream = ArchiveStream.encodeStream(writingTo: compressStream) else {
+                throw CompressionError.createFileStream(stream: "encode")
+            }
+            defer {
+                try? encodeStream.close()
+            }
+
+            try Data(contentsOf: sourceURL, options: .mappedIfSafe).withUnsafeBytes {
+                header.append(.blob(key: ArchiveHeader.FieldKey("DAT"), size: UInt64($0.count)))
+                try encodeStream.writeHeader(header)
+                try encodeStream.writeBlob(key: ArchiveHeader.FieldKey("DAT"), from: $0)
             }
         } else {
             puppyDebug("lzfse compression is not supported on this macOS version")
