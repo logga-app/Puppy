@@ -13,6 +13,8 @@ class Compressor {
     enum CompressionError: Error, Equatable, LocalizedError {
         case createFileStream(stream: String)
         case archive(filename: String, err: String)
+        case fieldKeys
+        case createHeaders
 
         public var errorDescription: String? {
             switch self {
@@ -20,6 +22,10 @@ class Compressor {
                 return "unable to create \(stream) stream"
             case .archive(filename: let file, err: let error):
                 return "unable to archieve \(file): \(error)"
+            case .fieldKeys:
+                return "unable to init field keys"
+            case .createHeaders:
+                return "unable to create archive headers"
             }
         }
     }
@@ -30,11 +36,18 @@ class Compressor {
 
     static func lzfse(src: String, dst: String) throws {
         if #available(macOS 11.0, *) {
+            guard let fields = ArchiveHeader.FieldKeySet("PAT,LNK,DEV,UID,GID,MOD,FLG,MTM,CTM,SH2,DAT,SIZ") else {
+                throw CompressionError.fieldKeys
+            }
+
             let destinationPath = FilePath(dst)
             let sourceURL = URL(fileURLWithPath: src)
 
-            let header = ArchiveHeader()
-            header.append(.string(key: ArchiveHeader.FieldKey("PAT"), value: src))
+            guard let header = ArchiveHeader(keySet: fields,
+                                       directory: FilePath(sourceURL.deletingLastPathComponent().path),
+                                             path: FilePath(sourceURL.lastPathComponent), flags: []) else {
+                throw CompressionError.createHeaders
+            }
             header.append(.uint(key: ArchiveHeader.FieldKey("TYP"),
                     value: UInt64(ArchiveHeader.EntryType.regularFile.rawValue)))
 
