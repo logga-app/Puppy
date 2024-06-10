@@ -77,11 +77,13 @@ public struct FileRotationLogger: FileLoggerable {
         // Archives the target file.
         archiveTargetFiles()
 
-        // Removes extra archived files.
-        removeArchivedFiles(fileURL, maxArchivedFilesCount: rotationConfig.maxArchivedFilesCount)
         if self.compressArchived {
             removeCompressedArchives(fileURL, maxArchivedFilesCount: rotationConfig.maxArchivedFilesCount)
+        } else {
+            // Removes extra archived files.
+            removeArchivedFiles(fileURL, maxArchivedFilesCount: rotationConfig.maxArchivedFilesCount)
         }
+
         // Opens a new target file.
         do {
             puppyDebug("will openFile in rotateFiles")
